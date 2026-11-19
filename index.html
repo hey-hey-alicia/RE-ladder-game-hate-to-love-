@@ -1,3 +1,8 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hate to Love Ladder</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,6 +26,8 @@
   color-scheme:light;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
 html,body{height:100%}
 body{background:var(--sky);color:var(--ink);font-family:var(--f-body);font-size:15px;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
@@ -83,13 +90,20 @@ header h1 span{color:var(--gold);text-shadow:0 1px 0 #d9a514}
 .verse cite{display:block;font-style:normal;color:var(--blue);margin-top:4px;font-size:17px}
 .result-ladder{font-family:var(--f-tile);font-weight:600;letter-spacing:.12em;color:var(--blue-deep);text-align:center;margin:6px 0 12px;text-transform:uppercase;line-height:1.7}
 .card .controls{margin-top:6px}
+.answers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 10px;margin:6px 0 12px}
+.answers .example{margin:0;gap:4px}
+.answers .example .tile{width:30px;height:30px;font-size:15px;border-radius:6px}
+.answers .label{font:600 12px var(--f-body);color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}
+.glossary{font-size:13px;color:var(--muted)}
+.glossary b{color:var(--ink)}
 @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
 @keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.18) rotate(-4deg)}100%{transform:scale(1)}}
 @keyframes tap{0%{transform:scale(.9)}100%{transform:scale(1)}}
 @media (max-width:400px){.tile{width:50px;height:50px;font-size:25px}header h1{font-size:29px}.key{height:48px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
-
+</head>
+<body>
 <div class="bg" aria-hidden="true">
   <svg viewBox="0 0 1200 220" preserveAspectRatio="none">
     <path d="M0 140 C150 90 260 120 380 100 C520 70 600 130 760 110 C900 90 1020 60 1200 100 L1200 220 L0 220Z" fill="#e3e9f7"/>
@@ -122,11 +136,13 @@ header h1 span{color:var(--gold);text-shadow:0 1px 0 #d9a514}
   <div class="controls">
     <button class="btn" id="undoBtn">Undo step</button>
     <button class="btn" id="hintBtn">Hint</button>
+    <button class="btn" id="answerBtn">Show answer</button>
   </div>
 
   <div class="keyboard" id="keyboard" aria-label="Keyboard"></div>
 </div>
 
+<canvas id="confetti" aria-hidden="true" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60"></canvas>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <div class="modal" id="helpModal" hidden>
@@ -148,6 +164,16 @@ header h1 span{color:var(--gold);text-shadow:0 1px 0 #d9a514}
       <div class="row"><div class="tile" style="background:var(--gold);border-color:#d9a514">w</div><div class="tile" style="background:var(--gold);border-color:#d9a514">a</div><div class="tile" style="background:var(--gold);border-color:#d9a514">r</div><div class="tile" style="background:var(--gold);border-color:#d9a514">m</div></div>
     </div>
     <div class="controls"><button class="btn primary" id="helpClose">Let's play</button></div>
+  </div>
+</div>
+
+<div class="modal" id="answerModal" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="answerTitle">
+    <h2 id="answerTitle">The fastest way</h2>
+    <p id="answerIntro"></p>
+    <div class="answers" id="answerList"></div>
+    <p class="glossary" id="glossary"></p>
+    <div class="controls"><button class="btn primary" id="answerClose">Back to the puzzle</button></div>
   </div>
 </div>
 
@@ -209,7 +235,36 @@ function submit(){
   if(!WORDS.has(typed)){toast("Not in the word list");shake();return;}
   if(path.includes(typed)){toast("You've already used that word");shake();return;}
   path.push(typed);typed="";
-  if(path[path.length-1]===GOAL){won=true;render();setTimeout(showWin,700);}else render();
+  if(path[path.length-1]===GOAL){won=true;render();confetti();setTimeout(showWin,700);}else render();
+}
+// blue-and-gold confetti burst, drawn on a canvas above everything (clicks pass through)
+let confettiRun=0;
+function confetti(){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  const cv=$("confetti"),ctx=cv.getContext("2d"),dpr=window.devicePixelRatio||1;
+  const W=innerWidth,H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  const COLORS=["#5a78bf","#3d5797","#f3c234","#fbe7a6","#9fb3e3","#ffffff"];
+  const ps=[];const run=++confettiRun;
+  const burst=(x,y,n,dir)=>{for(let i=0;i<n;i++){const a=(dir??-Math.PI/2)+(Math.random()-.5)*(dir===undefined?2.2:1.1);const sp=7+Math.random()*9;
+    ps.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r:Math.random()*Math.PI,vr:(Math.random()-.5)*.3,w:6+Math.random()*7,h:4+Math.random()*5,
+      c:COLORS[Math.random()*COLORS.length|0],shape:Math.random()<.15?"star":Math.random()<.5?"rect":"dot",wob:Math.random()*10,life:0});}};
+  burst(W/2,H*.55,120);
+  burst(0,H*.8,60,-Math.PI/3);burst(W,H*.8,60,-Math.PI*2/3);
+  setTimeout(()=>{if(run===confettiRun){burst(W*.25,H*.6,50);burst(W*.75,H*.6,50);}},350);
+  const star=(s)=>{ctx.beginPath();for(let i=0;i<10;i++){const rr=i%2?s*.45:s;const a=i*Math.PI/5-Math.PI/2;ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr);}ctx.closePath();ctx.fill();};
+  const start=performance.now();
+  (function tick(t){
+    if(run!==confettiRun)return;
+    ctx.clearRect(0,0,W,H);
+    for(const p of ps){p.life++;p.vy+=.28;p.vx*=.985;p.vy*=.985;p.x+=p.vx+Math.sin((p.life+p.wob)/8)*.6;p.y+=p.vy;p.r+=p.vr;
+      const fade=Math.max(0,1-Math.max(0,(t-start)-3200)/1000);ctx.globalAlpha=fade;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r);ctx.fillStyle=p.c;
+      if(p.shape==="rect"){ctx.scale(1,Math.cos(p.life/6));ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);}
+      else if(p.shape==="dot"){ctx.beginPath();ctx.arc(0,0,p.h/1.6,0,Math.PI*2);ctx.fill();}
+      else star(p.w*.8);
+      ctx.restore();}
+    if(t-start<4200)requestAnimationFrame(tick);else ctx.clearRect(0,0,W,H);
+  })(start);
 }
 function addLetter(c){if(won||typed.length>=4)return;typed+=c;render();}
 function back(){if(won)return;typed=typed.slice(0,-1);render();}
@@ -221,10 +276,10 @@ function hint(){
   const last=path[path.length-1];let idx=0;for(let i=0;i<4;i++)if(next[i]!==last[i])idx=i;
   toast(`Try changing letter ${idx+1} to “${next[idx].toUpperCase()}”`);
 }
-function restart(){path=[START];typed="";won=false;hintsUsed=0;$("winModal").hidden=true;render();}
+function restart(){path=[START];typed="";won=false;hintsUsed=0;answerShown=false;$("winModal").hidden=true;render();}
 function showWin(){
   const s=path.length-1;
-  $("winScore").textContent= s<=PAR?`You made it in ${s} steps. That's par!`:`You made it in ${s} steps (par is ${PAR}).`+(hintsUsed?` Hints used: ${hintsUsed}.`:"");
+  $("winScore").textContent= s<=PAR?`You made it in ${s} steps. That's par!`:`You made it in ${s} steps (par is ${PAR}).`+(hintsUsed?` Hints used: ${hintsUsed}.`:"")+(answerShown?" (You peeked at the answer.)":"");
   $("winLadder").innerHTML=path.map(w=>w.toUpperCase()).join("<br>");
   $("winModal").hidden=false;$("shareBtn").focus();
 }
@@ -250,7 +305,7 @@ rows.forEach(r=>{const kr=document.createElement("div");kr.className="krow";
   $("keyboard").appendChild(kr);});
 document.addEventListener("keydown",e=>{
   if(e.metaKey||e.ctrlKey||e.altKey)return;
-  if(!$("helpModal").hidden||!$("winModal").hidden){if(e.key==="Escape"){$("helpModal").hidden=true;}return;}
+  if(!$("helpModal").hidden||!$("winModal").hidden||!$("answerModal").hidden){if(e.key==="Escape")closeModals();return;}
   if(e.key==="Enter"){e.preventDefault();submit();}
   else if(e.key==="Backspace")back();
   else if(/^[a-zA-Z]$/.test(e.key))addLetter(e.key.toLowerCase());
@@ -258,7 +313,43 @@ document.addEventListener("keydown",e=>{
 $("undoBtn").onclick=undo;$("hintBtn").onclick=hint;$("restartBtn").onclick=restart;$("againBtn").onclick=restart;
 $("helpBtn").onclick=()=>{$("helpModal").hidden=false;$("helpClose").focus();};
 $("helpClose").onclick=()=>{$("helpModal").hidden=true;try{localStorage.setItem("seenHelp","1")}catch(e){}};
+function allShortest(){
+  // every shortest route from START to GOAL, found level by level
+  const A="abcdefghijklmnopqrstuvwxyz";const nb=w=>{const o=[];for(let i=0;i<4;i++)for(const c of A){if(c===w[i])continue;const n=w.slice(0,i)+c+w.slice(i+1);if(WORDS.has(n))o.push(n);}return o;};
+  let level=[[START]];const seen=new Set([START]);
+  while(level.length){const done=level.filter(p=>p[p.length-1]===GOAL);if(done.length)return done;
+    const next=[];const added=new Set();
+    for(const p of level)for(const n of nb(p[p.length-1]))if(!seen.has(n)){next.push([...p,n]);added.add(n);}
+    added.forEach(n=>seen.add(n));level=next;if(level.length>20000)break;}
+  return [];
+}
+const GLOSS={lave:"to wash",lote:"a kind of tree (the lotus tree)",hove:"past tense of heave"};
+let answerShown=false;
+function showAnswer(){
+  const routes=allShortest();answerShown=true;
+  $("answerIntro").textContent=routes.length>1?`You can reach LOVE in ${PAR} steps. There are ${routes.length} ways to do it:`:`You can reach LOVE in ${PAR} steps:`;
+  const box=$("answerList");box.innerHTML="";
+  routes.forEach((r,k)=>{const wrap=document.createElement("div");
+    const lab=document.createElement("div");lab.className="label";lab.textContent=`Route ${k+1}`;
+    const ex=document.createElement("div");ex.className="example";ex.setAttribute("aria-label",r.join(", ").toUpperCase());
+    r.forEach((w,i)=>{const row=document.createElement("div");row.className="row";
+      for(let j=0;j<4;j++){const t=document.createElement("div");t.className="tile";t.textContent=w[j];
+        if(i===0){t.style.cssText="background:var(--blue);color:#fff;border-color:var(--blue-deep)";}
+        else if(i===r.length-1){t.style.cssText="background:var(--gold);border-color:#d9a514";}
+        else{if(w[j]===GOAL[j])t.classList.add("match");if(w[j]!==r[i-1][j])t.classList.add("changed");}
+        row.appendChild(t);}
+      ex.appendChild(row);});
+    wrap.append(lab,ex);box.appendChild(wrap);});
+  const used=[...new Set(routes.flat())].filter(w=>GLOSS[w]);
+  $("glossary").innerHTML=used.length?"Unusual words: "+used.map(w=>`<b>${w.toUpperCase()}</b> means ${GLOSS[w]}`).join("; ")+".":"";
+  $("answerModal").hidden=false;$("answerClose").focus();
+}
+$("answerBtn").onclick=showAnswer;$("answerClose").onclick=()=>{$("answerModal").hidden=true;};
+function closeModals(){$("helpModal").hidden=true;$("winModal").hidden=true;$("answerModal").hidden=true;try{localStorage.setItem("seenHelp","1")}catch(e){}}
+document.querySelectorAll(".modal").forEach(m=>m.addEventListener("click",e=>{if(e.target===m)closeModals();}));
 let seen=false;try{seen=localStorage.getItem("seenHelp")==="1"}catch(e){}
 render();
 if(!seen)$("helpModal").hidden=false;
 </script>
+</body>
+</html>
